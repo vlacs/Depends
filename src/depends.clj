@@ -166,6 +166,14 @@
             #(release! %1)
             (fn [] (d/recur))))))))
 
+(defn map-timeout!
+  "Applies a timeout to the completion lock. This function returns a stream
+  with the same items with the timeout applied."
+  [dep-event-stream interval]
+  (s/map
+    #(d/timeout! (::complete %) interval ::timeout)
+    dep-event-stream))
+
 (defn map-release
   "Releases the dependencies on each item and emits the data on to the stream
   that gets returned from this function."
