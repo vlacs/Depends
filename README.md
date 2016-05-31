@@ -22,8 +22,8 @@ First, there is ```depends/dependify``` which creates a single instance of
 a dependency manager. Its output is a map of the internals of that instance.
 
 ```clj
-(def input (manifold.stream 10))
-(def output (manifold.stream 10))
+(def input (manifold.stream/stream 10))
+(def output (manifold.stream/stream 10))
 (depends/dependify input output)
 ```
 
