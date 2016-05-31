@@ -12,6 +12,7 @@ clojure.test.check.
 ## Usage
 
 It's on Clojars!
+
 [![Clojars Project](https://img.shields.io/clojars/v/org.vlacs/depends.svg)](https://clojars.org/org.vlacs/depends)
 
 It's fairly straight forward, there are only a handful (so far,) functions that
