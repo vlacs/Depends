@@ -1,4 +1,4 @@
-(defproject org.vlacs/depends "0.0.1-alpha1"
+(defproject org.vlacs/depends "0.0.1"
   :description "Queue re-ordering based on metadata dependencies using Manifold
                streams for abstraction and asyncronous tools."
   :url "http://github.com/vlacs/depends"

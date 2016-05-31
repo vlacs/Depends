@@ -15,7 +15,7 @@ It's fairly straight forward, there are only a handful (so far,) functions that
 you should be thinking about when using Depends:
 
 First, there is ```depends/dependify``` which creates a single instance of
-a dependency manager. It's output is a map of it's internals.
+a dependency manager. Its output is a map of the internals of that instance.
 
 ```clj
 (def input (manifold.stream 10))
