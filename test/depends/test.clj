@@ -8,7 +8,6 @@
     [clojure.test.check.generators :as gen]
     [clojure.test.check.properties :as prop]))
 
-(spec/def :depends/anything (spec/with-gen (constantly true) (fn [] gen/any-printable)))
 
 (def gen-dep-item
   (gen/fmap

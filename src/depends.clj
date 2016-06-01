@@ -1,11 +1,16 @@
 (ns depends
   (:require
+    [clojure.test.check.generators :as gen]
     [clojure.inspector :refer [atom?]]
     [clojure.spec :as spec]
     [manifold
      [time :as t]
      [stream :as s]
      [deferred :as d]]))
+
+(spec/def ::anything
+  (spec/with-gen (constantly true)
+    (fn [] gen/any-printable)))
 
 (spec/def ::complete d/deferred?)
 
@@ -81,8 +86,8 @@
   chained-put!
   :args (spec/cat
           ::dependency-map ::dependency-map
-          ::incoming-stream s/stream?
-          ::outgoing-stream s/stream?
+          ::incoming-stream s/source?
+          ::outgoing-stream s/sink?
           ::chained-item ::anything)
   :ret ::dependency-map)
 
@@ -108,7 +113,10 @@
 (defn dependify
   "Starts doing some queue-reordering."
   [incoming outgoing]
-  (let [dm (atom {})]
+  (let
+    [incoming (s/->source incoming)
+     outgoing (s/->sink outgoing)
+     dm (atom {})]
     {:state dm
      :streams
      {:incoming incoming
@@ -126,15 +134,15 @@
 (spec/def ::state atom?)
 (spec/def ::clean-up-cron fn?)
 (spec/def ::chained-put-loop d/deferred?)
-(spec/def ::incoming s/stream?)
-(spec/def ::outgoing s/stream?)
+(spec/def ::incoming s/source?)
+(spec/def ::outgoing s/sink?)
 (spec/def ::streams (spec/keys :req-un [::incoming ::outgoing]))
 (spec/def ::tasks (spec/keys :req-un [::clean-up-cron ::chained-put-loop]))
 (spec/def ::system (spec/keys :req-un [::state ::tasks ::streams]))
 
 (spec/fdef
   dependify
-  :args (spec/cat ::incoming s/stream? ::outgoing s/stream?)
+  :args (spec/cat ::incoming s/sourceable? ::outgoing s/sinkable?)
   :ret ::system)
 
 (spec/instrument #'dependify)
@@ -155,19 +163,20 @@
   manager. Once the function is done consuming the message, the deferred
   completion value is then realized so the lock on the data can be released."
   [dependency-item-stream f & args]
-  (d/loop []
-    (d/chain
-      (s/take! dependency-item-stream ::drained)
-      (fn [{data ::data complete ::complete :as msg}]
-        (when (not (identical? ::drained msg))
-          (d/chain
-            (d/future (apply (partial f data) args) msg)
-            #(release! %1)
-            (fn [] (d/recur))))))))
+  (let [dependency-item-stream (s/->source dependency-item-stream)]
+    (d/loop []
+      (d/chain
+        (s/take! dependency-item-stream ::drained)
+        (fn [{data ::data complete ::complete :as msg}]
+          (when (not (identical? ::drained msg))
+            (d/chain
+              (d/future (apply (partial f data) args) msg)
+              #(release! %1)
+              (fn [] (d/recur)))))))))
 
 (spec/fdef
   consume
-  :args (spec/cat ::incoming s/stream?
+  :args (spec/cat ::incoming s/sourceable?
                   ::consumption-fn fn?
                   ::consumption-fn-args (spec/* ::anything))
   :ret d/deferred?)
@@ -199,15 +208,3 @@
           (s/put! out (::data i))
           (fn [_] (release! i)))) out) out))
 
-(comment
-  
-  (def i (s/stream 10))
-  (def o (s/stream 10))
-  (def system (dependify i o))
-  (def rb (s/stream 10))
-  (s/connect (depends/map-release o) rb)
-
-  (s/put! i [[[] []]])
-  (s/take! rb)
-  
-  )
