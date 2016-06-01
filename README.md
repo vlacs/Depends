@@ -15,6 +15,10 @@ It's on Clojars!
 
 [![Clojars Project](https://img.shields.io/clojars/v/org.vlacs/depends.svg)](https://clojars.org/org.vlacs/depends)
 
+Please note that version ```0.0.1``` is broken. ```0.0.2-SNAPSHOT``` is the
+latest bleeding edge version of this library. If it's not obvious, this library
+is not stable or complete yet.
+
 It's fairly straight forward, there are only a handful (so far,) functions that
 you should be thinking about when using Depends:
 
@@ -24,6 +28,16 @@ a dependency manager. Its output is a map of the internals of that instance.
 ```clj
 (def input (manifold.stream/stream 10))
 (def output (manifold.stream/stream 10))
+(depends/dependify input output)
+```
+
+However, you don't need to use Manifold streams for your abstractions. Manifold
+supports several kinds of abstractions out of the box and core.async channels is
+one of them.
+
+```clj
+(def input (clojure.core.async/chan 10))
+(def output (clojure.core.async/chan 10))
 (depends/dependify input output)
 ```
 
