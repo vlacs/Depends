@@ -165,6 +165,15 @@
             #(release! %1)
             (fn [] (d/recur))))))))
 
+(spec/fdef
+  consume
+  :args (spec/cat ::incoming s/stream?
+                  ::consumption-fn fn?
+                  ::consumption-fn-args (spec/* ::anything))
+  :ret d/deferred?)
+
+(spec/instrument #'consume)
+
 (defn apply-timeout!
   [item interval]
   (d/timeout! (::complete item) interval ::timeout)

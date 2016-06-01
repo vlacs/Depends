@@ -92,6 +92,24 @@ As you can see, once the deferred on the first item was completed, the second
 item showed up but, not until the third message, which had no dependencies, was
 processed before the first was "completed".
 
+What if something goes wrong? Will these locks last forever and deadlock
+everything that comes after it? Out of the box, yes, that's what will happen
+however, it's not hard to make a simple fix for this. Manifold already provides
+a timeout mechanism for deferred values and Depends has a stream mapping
+function that will automatically apply a timeout for every item in a stream
+coming its way. So you could apply this by doing the following:
+
+```clj
+(def input (s/stream 10))
+(def output (s/stream 10))
+(def pre-output (s/stream))
+(s/connect (depends/map-timeout! pre-output) output)
+(def system (depends/dependify input pre-output))
+```
+
+Now every message that gets put on the output buffered stream will have no less
+than 1 second to complete before its lock it automatically dropped.
+
 TODO: Finish the README.
 
 ## License
