@@ -2,7 +2,6 @@
   (:require
     [clojure.inspector :refer [atom?]]
     [clojure.spec :as spec]
-    [clj-uuid :refer [v1] :rename {v1 uuid}]
     [manifold
      [time :as t]
      [stream :as s]
@@ -166,12 +165,17 @@
             #(release! %1)
             (fn [] (d/recur))))))))
 
+(defn apply-timeout!
+  [item interval]
+  (d/timeout! (::complete item) interval ::timeout)
+  item)
+
 (defn map-timeout!
   "Applies a timeout to the completion lock. This function returns a stream
   with the same items with the timeout applied."
   [dep-event-stream interval]
   (s/map
-    #(d/timeout! (::complete %) interval ::timeout)
+    #(apply-timeout! % interval)
     dep-event-stream))
 
 (defn map-release
