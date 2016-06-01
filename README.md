@@ -103,7 +103,7 @@ coming its way. So you could apply this by doing the following:
 (def input (s/stream 10))
 (def output (s/stream 10))
 (def pre-output (s/stream))
-(s/connect (depends/map-timeout! pre-output) output)
+(s/connect (depends/map-timeout! pre-output 1000) output)
 (def system (depends/dependify input pre-output))
 ```
 
