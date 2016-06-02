@@ -23,12 +23,15 @@ It's fairly straight forward, there are only a handful (so far,) functions that
 you should be thinking about when using Depends:
 
 First, there is ```depends/dependify``` which creates a single instance of
-a dependency manager. Its output is a map of the internals of that instance.
+a dependency manager. Its argument are an input (anything sourceable by
+manifold,) and output (anything sinkable by Manifold,) and a value for the
+maximum number of waiting items. Its output is a map of the internals for that
+instance.
 
 ```clj
 (def input (manifold.stream/stream 10))
 (def output (manifold.stream/stream 10))
-(depends/dependify input output)
+(depends/dependify input output 10)
 ```
 
 However, you don't need to use Manifold streams for your abstractions. Manifold
@@ -38,7 +41,7 @@ one of them.
 ```clj
 (def input (clojure.core.async/chan 10))
 (def output (clojure.core.async/chan 10))
-(depends/dependify input output)
+(depends/dependify input output 10)
 ```
 
 Whatever stream abstraction is used for the ```output``` argument will get items
@@ -63,7 +66,7 @@ the ```:depends/complete``` deferred value. That's it.
 ```clj
 (def input (s/stream 10))
 (def output (s/stream 10))
-(def system (depends/dependify input output))
+(def system (depends/dependify input output 10))
 
 (s/put!
   input
@@ -118,7 +121,7 @@ coming its way. So you could apply this by doing the following:
 (def output (s/stream 10))
 (def pre-output (s/stream))
 (s/connect (depends/map-timeout! pre-output 1000) output)
-(def system (depends/dependify input pre-output))
+(def system (depends/dependify input pre-output 10))
 ```
 
 Now every message that gets put on the output buffered stream will have no less
