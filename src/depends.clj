@@ -72,13 +72,18 @@
     dm dependencies))
 
 (defn chained-put!
-  [dm incoming outgoing item]
+  [dm incoming outgoing item waiting max-waiting]
   (let [dependencies (:dependencies (meta item))
         put-lock (make-put-lock dm dependencies)
         completion-lock (d/deferred)]
+    @(d/loop []
+       (if (< max-waiting @waiting)
+         (manifold.time/in 10 #(d/recur)) true))
+    (swap! waiting inc)
     (d/chain
       put-lock
       (fn [_]
+        (swap! waiting dec)
         (s/put! outgoing (wrap-data item completion-lock))))
     (merge-completion-lock dm dependencies completion-lock)))
 
@@ -88,7 +93,9 @@
           ::dependency-map ::dependency-map
           ::incoming-stream s/source?
           ::outgoing-stream s/sink?
-          ::chained-item ::anything)
+          ::chained-item ::anything
+          ::waiting-atom atom?
+          ::max-waiting integer?)
   :ret ::dependency-map)
 
 (spec/instrument #'chained-put!)
@@ -112,12 +119,14 @@
 
 (defn dependify
   "Starts doing some queue-reordering."
-  [incoming outgoing]
+  [incoming outgoing max-waiting]
   (let
     [incoming (s/->source incoming)
      outgoing (s/->sink outgoing)
-     dm (atom {})]
-    {:state dm
+     dm (atom {})
+     waiting (atom 0)]
+    {:dependency-state dm
+     :waiting-state waiting
      :streams
      {:incoming incoming
       :outgoing outgoing}
@@ -127,22 +136,30 @@
       :chained-put-loop
       (d/loop []
         (d/chain
-          (s/take! incoming)
-          #(swap! dm chained-put! incoming outgoing %1)
-          (fn [_] (d/recur))))}}))
+          (s/take! incoming ::drained)
+          (fn [item]
+            (if (identical? item ::drained)
+              (do (s/close! outgoing) ::source-closed)
+              (do
+                (swap! dm chained-put! incoming outgoing
+                       item waiting max-waiting)
+                (d/recur))))))}}))
 
-(spec/def ::state atom?)
+(spec/def ::dependency-state atom?)
+(spec/def ::waiting-state atom?)
 (spec/def ::clean-up-cron fn?)
 (spec/def ::chained-put-loop d/deferred?)
 (spec/def ::incoming s/source?)
 (spec/def ::outgoing s/sink?)
 (spec/def ::streams (spec/keys :req-un [::incoming ::outgoing]))
 (spec/def ::tasks (spec/keys :req-un [::clean-up-cron ::chained-put-loop]))
-(spec/def ::system (spec/keys :req-un [::state ::tasks ::streams]))
+(spec/def ::system (spec/keys :req-un [::dependency-state ::waiting-state ::tasks ::streams]))
 
 (spec/fdef
   dependify
-  :args (spec/cat ::incoming s/sourceable? ::outgoing s/sinkable?)
+  :args (spec/cat ::incoming s/sourceable?
+                  ::outgoing s/sinkable?
+                  ::max-waiting integer?)
   :ret ::system)
 
 (spec/instrument #'dependify)
@@ -232,3 +249,17 @@
 
 (spec/instrument #'map-release)
 
+
+(comment
+  
+  (def in (s/stream 10))
+  (def out (s/stream 10))
+  (def system (dependify in out 100))
+
+  (s/put! in [[[]  []  [[[3]  {}]  ()]]])
+
+  (def n1 (s/take! out))
+  (def n2 (s/take! out))
+  (def n3 (s/take! out))
+
+  )
