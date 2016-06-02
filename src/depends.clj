@@ -82,9 +82,8 @@
     (swap! waiting inc)
     (d/chain
       put-lock
-      (fn [_]
-        (swap! waiting dec)
-        (s/put! outgoing (wrap-data item completion-lock))))
+      (fn [_] (s/put! outgoing (wrap-data item completion-lock)))
+      (fn [_] (swap! waiting dec)))
     (merge-completion-lock dm dependencies completion-lock)))
 
 (spec/fdef
