@@ -188,6 +188,15 @@
   (d/timeout! (::complete item) interval ::timeout)
   item)
 
+(spec/fdef
+  apply-timeout!
+  :args (spec/cat ::item ::anything
+                  ::interval integer?)
+  :ret ::anything
+  :fn #(identical? (:ret %) (-> % :args ::item)))
+
+(spec/instrument #'apply-timeout!)
+
 (defn map-timeout!
   "Applies a timeout to the completion lock. This function returns a stream
   with the same items with the timeout applied."
@@ -195,6 +204,14 @@
   (s/map
     #(apply-timeout! % interval)
     dep-event-stream))
+
+(spec/fdef
+  map-timeout!
+  :args (spec/cat ::source s/sourceable?
+                  ::interval integer?)
+  :ret s/stream?)
+
+(spec/instrument #'map-timeout!)
 
 (defn map-release
   "Releases the dependencies on each item and emits the data on to the stream
@@ -207,4 +224,11 @@
         (d/chain
           (s/put! out (::data i))
           (fn [_] (release! i)))) out) out))
+
+(spec/fdef
+  map-release
+  :args (spec/cat ::source s/sourceable?)
+  :ret s/stream?)
+
+(spec/instrument #'map-release)
 
