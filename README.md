@@ -129,7 +129,7 @@ coming its way. So you could apply this by doing the following:
 (def output (s/stream 10))
 (def pre-output (s/stream))
 (s/connect (depends/map-timeout! pre-output 1000) output)
-(def system (depends/dependify input pre-output 10))
+(def system (depends/dependify input pre-output))
 ```
 
 Now every message that gets put on the output buffered stream will have no less
