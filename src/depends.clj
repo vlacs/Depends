@@ -135,25 +135,26 @@
 
 (defn dependify
   "Starts doing some queue-reordering."
-  [incoming outgoing opts]
-  (let
-    [incoming (s/->source incoming)
-     outgoing (s/->sink outgoing)
-     dm (atom {})
-     waiting (atom 0)]
-    {:dependency-state dm
-     :waiting-state waiting
-     :streams
-     {:incoming incoming
-      :outgoing outgoing}
-     :tasks
-     {:clean-up-cron
-      (start-cron-clean-up!
-        dm (:clean-up-interval opts (t/seconds 15)))
-      :chained-put-loop
-      (start-chained-put-loop!
-        dm incoming outgoing waiting
-        (:max-waiting opts))}}))
+  ([incoming outgoing] (dependify incoming outgoing {}))
+  ([incoming outgoing opts]
+   (let
+     [incoming (s/->source incoming)
+      outgoing (s/->sink outgoing)
+      dm (atom {})
+      waiting (atom 0)]
+     {:dependency-state dm
+      :waiting-state waiting
+      :streams
+      {:incoming incoming
+       :outgoing outgoing}
+      :tasks
+      {:clean-up-cron
+       (start-cron-clean-up!
+         dm (:clean-up-interval opts (t/seconds 15)))
+       :chained-put-loop
+       (start-chained-put-loop!
+         dm incoming outgoing waiting
+         (:max-waiting opts))}})))
 
 (spec/def ::dependency-state atom?)
 (spec/def ::waiting-state atom?)
@@ -170,9 +171,12 @@
 
 (spec/fdef
   dependify
-  :args (spec/cat ::incoming s/sourceable?
-                  ::outgoing s/sinkable?
-                  ::options ::options)
+  :args (spec/or
+          ::no-opts (spec/cat ::incoming s/sourceable?
+                              ::outgoing s/sinkable?)
+          ::with-opts (spec/cat ::incoming s/sourceable?
+                                ::outgoing s/sinkable?
+                                ::options ::options))
   :ret ::system)
 
 (spec/instrument #'dependify)
