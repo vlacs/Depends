@@ -77,7 +77,7 @@
         put-lock (make-put-lock dm dependencies)
         completion-lock (d/deferred)]
     @(d/loop []
-       (if (< max-waiting @waiting)
+       (if (and (not (nil? max-waiting)) (< max-waiting @waiting))
          (manifold.time/in 10 #(d/recur)) true))
     (swap! waiting inc)
     (d/chain

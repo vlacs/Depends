@@ -24,14 +24,13 @@ you should be thinking about when using Depends:
 
 First, there is ```depends/dependify``` which creates a single instance of
 a dependency manager. Its argument are an input (anything sourceable by
-manifold,) and output (anything sinkable by Manifold,) and a value for the
-maximum number of waiting items. Its output is a map of the internals for that
-instance.
+manifold,) and output (anything sinkable by Manifold,) and a map describing the
+options to be applied. Its output is a map of the internals for that instance.
 
 ```clj
 (def input (manifold.stream/stream 10))
 (def output (manifold.stream/stream 10))
-(depends/dependify input output 10)
+(depends/dependify input output {:max-waiting 10 :clean-up-interval 2500})
 ```
 
 However, you don't need to use Manifold streams for your abstractions. Manifold
@@ -41,8 +40,17 @@ one of them.
 ```clj
 (def input (clojure.core.async/chan 10))
 (def output (clojure.core.async/chan 10))
-(depends/dependify input output 10)
+(depends/dependify input output)
 ```
+
+Currently, the option map for ```dependify``` currently accepts two options:
+
+ - ```:max-waiting``` is used to describe the maximum number of items that can hold on
+   to a lock at once. This mechanism is to provide back pressure on the incoming
+   stream so system resources aren't consumed until they're gone.
+ - ```:clean-up-interval``` is used to describe how often Depends should scan for
+   realized locks to be evicted from the dependency map. By default, this value
+   is 15000 milliseconds.
 
 Whatever stream abstraction is used for the ```output``` argument will get items
 with the structure ```{:depends/data ... :depends/complete << … >> }``` The
@@ -66,7 +74,7 @@ the ```:depends/complete``` deferred value. That's it.
 ```clj
 (def input (s/stream 10))
 (def output (s/stream 10))
-(def system (depends/dependify input output 10))
+(def system (depends/dependify input output))
 
 (s/put!
   input
