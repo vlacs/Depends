@@ -116,9 +116,26 @@
 
 (spec/instrument #'dissoc-realized)
 
+(defn- start-cron-clean-up!
+  [dm interval]
+  (t/every interval #(d/future (swap! dm dissoc-realized) true)))
+
+(defn- start-chained-put-loop!
+  [dm incoming outgoing waiting max-waiting]
+  (d/loop []
+    (d/chain
+      (s/take! incoming ::drained)
+      (fn [item]
+        (if (identical? item ::drained)
+          (do (s/close! outgoing) ::source-closed)
+          (do
+            (swap! dm chained-put! incoming outgoing
+                   item waiting max-waiting)
+            (d/recur)))))))
+
 (defn dependify
   "Starts doing some queue-reordering."
-  [incoming outgoing max-waiting]
+  [incoming outgoing opts]
   (let
     [incoming (s/->source incoming)
      outgoing (s/->sink outgoing)
@@ -131,18 +148,12 @@
       :outgoing outgoing}
      :tasks
      {:clean-up-cron
-      (t/every (t/seconds 10) #(d/future (swap! dm dissoc-realized) true))
+      (start-cron-clean-up!
+        dm (:clean-up-interval opts (t/seconds 15)))
       :chained-put-loop
-      (d/loop []
-        (d/chain
-          (s/take! incoming ::drained)
-          (fn [item]
-            (if (identical? item ::drained)
-              (do (s/close! outgoing) ::source-closed)
-              (do
-                (swap! dm chained-put! incoming outgoing
-                       item waiting max-waiting)
-                (d/recur))))))}}))
+      (start-chained-put-loop!
+        dm incoming outgoing waiting
+        (:max-waiting opts))}}))
 
 (spec/def ::dependency-state atom?)
 (spec/def ::waiting-state atom?)
@@ -154,11 +165,14 @@
 (spec/def ::tasks (spec/keys :req-un [::clean-up-cron ::chained-put-loop]))
 (spec/def ::system (spec/keys :req-un [::dependency-state ::waiting-state ::tasks ::streams]))
 
+(spec/def ::options
+  (spec/keys :opt-un [::max-waiting ::clean-up-interval]))
+
 (spec/fdef
   dependify
   :args (spec/cat ::incoming s/sourceable?
                   ::outgoing s/sinkable?
-                  ::max-waiting integer?)
+                  ::options ::options)
   :ret ::system)
 
 (spec/instrument #'dependify)

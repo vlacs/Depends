@@ -27,7 +27,7 @@
           out (s/stream ic)
           released (depends/map-release out)
           released-buffer (s/stream ic)
-          ds (depends/dependify in out 100)]
+          ds (depends/dependify in out {:max-waiting ic})]
       (s/connect released released-buffer)
       (doseq [i items] @(s/put! in i))
       (let [released-items (take c (repeatedly #(s/take! released-buffer)))
