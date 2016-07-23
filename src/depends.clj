@@ -2,7 +2,6 @@
   (:require
     [clojure.inspector :refer [atom?]]
     [clojure.spec :as spec]
-    [clj-uuid :refer [v1] :rename {v1 uuid}]
     [manifold
      [time :as t]
      [stream :as s]
