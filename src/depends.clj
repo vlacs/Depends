@@ -83,7 +83,13 @@
     (d/chain
       put-lock
       (fn [_] (s/put! outgoing (wrap-data item completion-lock)))
-      (fn [_] (swap! waiting dec)))
+      (fn [_] (swap! waiting dec))
+      ;;; If this is the last item out, close the output stream.
+      (fn [w] 
+        (when
+          (and (<= w 0) (s/drained? incoming))
+          (s/close! outgoing))
+        true))
     (merge-completion-lock dm dependencies completion-lock)))
 
 (spec/fdef
@@ -94,7 +100,7 @@
           ::outgoing-stream s/sink?
           ::chained-item ::anything
           ::waiting-atom atom?
-          ::max-waiting integer?)
+          ::max-waiting (spec/nilable integer?))
   :ret ::dependency-map)
 
 (spec/instrument #'chained-put!)
@@ -127,7 +133,7 @@
       (s/take! incoming ::drained)
       (fn [item]
         (if (identical? item ::drained)
-          (do (s/close! outgoing) ::source-closed)
+          ::source-closed
           (do
             (swap! dm chained-put! incoming outgoing
                    item waiting max-waiting)
