@@ -8,7 +8,6 @@
     [clojure.test.check.generators :as gen]
     [clojure.test.check.properties :as prop]))
 
-(spec/def :depends/anything (spec/with-gen (constantly true) (fn [] gen/any-printable)))
 
 (def gen-dep-item
   (gen/fmap
@@ -28,14 +27,14 @@
           out (s/stream ic)
           released (depends/map-release out)
           released-buffer (s/stream ic)
-          ds (depends/dependify in out)]
+          ds (depends/dependify in out {:max-waiting ic})]
       (s/connect released released-buffer)
       (doseq [i items] @(s/put! in i))
       (let [released-items (take c (repeatedly #(s/take! released-buffer)))
             all-items (apply d/zip released-items)]
-        (d/timeout! all-items 250 ::timeout)
-        (and (not= @all-items ::timeout)
-             (= @all-items items))))))
+        (d/timeout! all-items 500 ::timeout)
+        (is (clojure.set/subset? (set @all-items) (set items)))
+        (is (not= @all-items ::timeout))))))
 
 (deftest data-flow
   (testing "Plain data flow"

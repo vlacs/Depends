@@ -1,11 +1,16 @@
 (ns depends
   (:require
+    [clojure.test.check.generators :as gen]
     [clojure.inspector :refer [atom?]]
     [clojure.spec :as spec]
     [manifold
      [time :as t]
      [stream :as s]
      [deferred :as d]]))
+
+(spec/def ::anything
+  (spec/with-gen (constantly true)
+    (fn [] gen/any-printable)))
 
 (spec/def ::complete d/deferred?)
 
@@ -67,23 +72,29 @@
     dm dependencies))
 
 (defn chained-put!
-  [dm incoming outgoing item]
+  [dm incoming outgoing item waiting max-waiting]
   (let [dependencies (:dependencies (meta item))
         put-lock (make-put-lock dm dependencies)
         completion-lock (d/deferred)]
+    @(d/loop []
+       (if (and (not (nil? max-waiting)) (< max-waiting @waiting))
+         (manifold.time/in 10 #(d/recur)) true))
+    (swap! waiting inc)
     (d/chain
       put-lock
-      (fn [_]
-        (s/put! outgoing (wrap-data item completion-lock))))
+      (fn [_] (s/put! outgoing (wrap-data item completion-lock)))
+      (fn [_] (swap! waiting dec)))
     (merge-completion-lock dm dependencies completion-lock)))
 
 (spec/fdef
   chained-put!
   :args (spec/cat
           ::dependency-map ::dependency-map
-          ::incoming-stream s/stream?
-          ::outgoing-stream s/stream?
-          ::chained-item ::anything)
+          ::incoming-stream s/source?
+          ::outgoing-stream s/sink?
+          ::chained-item ::anything
+          ::waiting-atom atom?
+          ::max-waiting integer?)
   :ret ::dependency-map)
 
 (spec/instrument #'chained-put!)
@@ -105,36 +116,67 @@
 
 (spec/instrument #'dissoc-realized)
 
+(defn- start-cron-clean-up!
+  [dm interval]
+  (t/every interval #(d/future (swap! dm dissoc-realized) true)))
+
+(defn- start-chained-put-loop!
+  [dm incoming outgoing waiting max-waiting]
+  (d/loop []
+    (d/chain
+      (s/take! incoming ::drained)
+      (fn [item]
+        (if (identical? item ::drained)
+          (do (s/close! outgoing) ::source-closed)
+          (do
+            (swap! dm chained-put! incoming outgoing
+                   item waiting max-waiting)
+            (d/recur)))))))
+
 (defn dependify
   "Starts doing some queue-reordering."
-  [incoming outgoing]
-  (let [dm (atom {})]
-    {:state dm
-     :streams
-     {:incoming incoming
-      :outgoing outgoing}
-     :tasks
-     {:clean-up-cron
-      (t/every (t/seconds 10) #(d/future (swap! dm dissoc-realized) true))
-      :chained-put-loop
-      (d/loop []
-        (d/chain
-          (s/take! incoming)
-          #(swap! dm chained-put! incoming outgoing %1)
-          (fn [_] (d/recur))))}}))
+  ([incoming outgoing] (dependify incoming outgoing {}))
+  ([incoming outgoing opts]
+   (let
+     [incoming (s/->source incoming)
+      outgoing (s/->sink outgoing)
+      dm (atom {})
+      waiting (atom 0)]
+     {:dependency-state dm
+      :waiting-state waiting
+      :streams
+      {:incoming incoming
+       :outgoing outgoing}
+      :tasks
+      {:clean-up-cron
+       (start-cron-clean-up!
+         dm (:clean-up-interval opts (t/seconds 15)))
+       :chained-put-loop
+       (start-chained-put-loop!
+         dm incoming outgoing waiting
+         (:max-waiting opts))}})))
 
-(spec/def ::state atom?)
+(spec/def ::dependency-state atom?)
+(spec/def ::waiting-state atom?)
 (spec/def ::clean-up-cron fn?)
 (spec/def ::chained-put-loop d/deferred?)
-(spec/def ::incoming s/stream?)
-(spec/def ::outgoing s/stream?)
+(spec/def ::incoming s/source?)
+(spec/def ::outgoing s/sink?)
 (spec/def ::streams (spec/keys :req-un [::incoming ::outgoing]))
 (spec/def ::tasks (spec/keys :req-un [::clean-up-cron ::chained-put-loop]))
-(spec/def ::system (spec/keys :req-un [::state ::tasks ::streams]))
+(spec/def ::system (spec/keys :req-un [::dependency-state ::waiting-state ::tasks ::streams]))
+
+(spec/def ::options
+  (spec/keys :opt-un [::max-waiting ::clean-up-interval]))
 
 (spec/fdef
   dependify
-  :args (spec/cat ::incoming s/stream? ::outgoing s/stream?)
+  :args (spec/or
+          ::no-opts (spec/cat ::incoming s/sourceable?
+                              ::outgoing s/sinkable?)
+          ::with-opts (spec/cat ::incoming s/sourceable?
+                                ::outgoing s/sinkable?
+                                ::options ::options))
   :ret ::system)
 
 (spec/instrument #'dependify)
@@ -155,23 +197,55 @@
   manager. Once the function is done consuming the message, the deferred
   completion value is then realized so the lock on the data can be released."
   [dependency-item-stream f & args]
-  (d/loop []
-    (d/chain
-      (s/take! dependency-item-stream ::drained)
-      (fn [{data ::data complete ::complete :as msg}]
-        (when (not (identical? ::drained msg))
-          (d/chain
-            (d/future (apply (partial f data) args) msg)
-            #(release! %1)
-            (fn [] (d/recur))))))))
+  (let [dependency-item-stream (s/->source dependency-item-stream)]
+    (d/loop []
+      (d/chain
+        (s/take! dependency-item-stream ::drained)
+        (fn [{data ::data complete ::complete :as msg}]
+          (when (not (identical? ::drained msg))
+            (d/chain
+              (d/future (apply (partial f data) args) msg)
+              #(release! %1)
+              (fn [] (d/recur)))))))))
+
+(spec/fdef
+  consume
+  :args (spec/cat ::incoming s/sourceable?
+                  ::consumption-fn fn?
+                  ::consumption-fn-args (spec/* ::anything))
+  :ret d/deferred?)
+
+(spec/instrument #'consume)
+
+(defn apply-timeout!
+  [item interval]
+  (d/timeout! (::complete item) interval ::timeout)
+  item)
+
+(spec/fdef
+  apply-timeout!
+  :args (spec/cat ::item ::anything
+                  ::interval integer?)
+  :ret ::anything
+  :fn #(identical? (:ret %) (-> % :args ::item)))
+
+(spec/instrument #'apply-timeout!)
 
 (defn map-timeout!
   "Applies a timeout to the completion lock. This function returns a stream
   with the same items with the timeout applied."
   [dep-event-stream interval]
   (s/map
-    #(d/timeout! (::complete %) interval ::timeout)
+    #(apply-timeout! % interval)
     dep-event-stream))
+
+(spec/fdef
+  map-timeout!
+  :args (spec/cat ::source s/sourceable?
+                  ::interval integer?)
+  :ret s/stream?)
+
+(spec/instrument #'map-timeout!)
 
 (defn map-release
   "Releases the dependencies on each item and emits the data on to the stream
@@ -185,15 +259,24 @@
           (s/put! out (::data i))
           (fn [_] (release! i)))) out) out))
 
+(spec/fdef
+  map-release
+  :args (spec/cat ::source s/sourceable?)
+  :ret s/stream?)
+
+(spec/instrument #'map-release)
+
+
 (comment
   
-  (def i (s/stream 10))
-  (def o (s/stream 10))
-  (def system (dependify i o))
-  (def rb (s/stream 10))
-  (s/connect (depends/map-release o) rb)
+  (def in (s/stream 10))
+  (def out (s/stream 10))
+  (def system (dependify in out 100))
 
-  (s/put! i [[[] []]])
-  (s/take! rb)
-  
+  (s/put! in [[[]  []  [[[3]  {}]  ()]]])
+
+  (def n1 (s/take! out))
+  (def n2 (s/take! out))
+  (def n3 (s/take! out))
+
   )
