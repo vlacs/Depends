@@ -31,12 +31,12 @@
   (spec/map-of
     ::anything #{:read :write}))
 
-(defn wrap-data
+(defn- wrap-data
   [data completion-lock]
   {::data data
    ::complete completion-lock})
 
-(defn make-put-lock
+(defn- make-put-lock
   [dm dependencies]
   (apply
     d/zip
@@ -48,7 +48,7 @@
             (::read-lock dep-locks))))
       dependencies)))
 
-(defn chain-lock
+(defn- chain-lock
   [target lock read-write]
   {::read-lock
    (if (= read-write :write)
@@ -61,17 +61,17 @@
      (d/zip (::write-lock target) lock)
      (constantly true))})
 
-(defn chain-completion-lock
+(defn- chain-completion-lock
   [completion-lock dm [dep-name read-write]]
   (update-in dm [dep-name] chain-lock completion-lock read-write))
 
-(defn merge-completion-lock
+(defn- merge-completion-lock
   [dm dependencies completion-lock]
   (reduce
     (partial chain-completion-lock completion-lock)
     dm dependencies))
 
-(defn chained-put!
+(defn- chained-put!
   [dm incoming outgoing item waiting max-waiting]
   (let [dependencies (:dependencies (meta item))
         put-lock (make-put-lock dm dependencies)
@@ -105,7 +105,7 @@
 
 (spec/instrument #'chained-put!)
 
-(defn dissoc-realized
+(defn- dissoc-realized
   "Remove all the items where both read and write locks have been realized."
   [dm]
   (apply
@@ -140,7 +140,11 @@
             (d/recur)))))))
 
 (defn dependify
-  "Starts doing some queue-reordering."
+  "This creates an instance of a dependency manager.
+  incoming is a anything that's sourceable by manifold.
+  outgoing is anything that's sinkable by manifold.
+  opts is a map of options to apply to this instance.
+  Opts include :clean-up-interval in milliseconds and :max-waiting as an int."
   ([incoming outgoing] (dependify incoming outgoing {}))
   ([incoming outgoing opts]
    (let
@@ -187,7 +191,14 @@
 
 (spec/instrument #'dependify)
 
-(defn release! [i] (d/success! (::complete i) true))
+(defn release!
+  "This function takes in a depends data wrapper and attempts to release any
+  lock it may have had on dependent data. True is always returned because if
+  a d/success! returns false, it means the deferred has already been realized
+  which is okay."
+  [i]
+  (d/success! (::complete i) true)
+  true)
 
 (spec/fdef
   release!
@@ -230,14 +241,14 @@
 
 (spec/fdef
   apply-timeout!
-  :args (spec/cat ::item ::anything
+  :args (spec/cat ::item ::data-wrapper
                   ::interval integer?)
-  :ret ::anything
+  :ret ::data-wrapper
   :fn #(identical? (:ret %) (-> % :args ::item)))
 
 (spec/instrument #'apply-timeout!)
 
-(defn map-timeout!
+(defn map-timeout
   "Applies a timeout to the completion lock. This function returns a stream
   with the same items with the timeout applied."
   [dep-event-stream interval]
@@ -246,7 +257,7 @@
     dep-event-stream))
 
 (spec/fdef
-  map-timeout!
+  map-timeout
   :args (spec/cat ::source s/sourceable?
                   ::interval integer?)
   :ret s/stream?)
@@ -272,17 +283,3 @@
 
 (spec/instrument #'map-release)
 
-
-(comment
-  
-  (def in (s/stream 10))
-  (def out (s/stream 10))
-  (def system (dependify in out 100))
-
-  (s/put! in [[[]  []  [[[3]  {}]  ()]]])
-
-  (def n1 (s/take! out))
-  (def n2 (s/take! out))
-  (def n3 (s/take! out))
-
-  )
