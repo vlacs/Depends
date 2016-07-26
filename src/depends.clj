@@ -262,7 +262,7 @@
                   ::interval integer?)
   :ret s/stream?)
 
-(spec/instrument #'map-timeout!)
+(spec/instrument #'map-timeout)
 
 (defn map-release
   "Releases the dependencies on each item and emits the data on to the stream

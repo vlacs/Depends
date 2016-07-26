@@ -7,6 +7,8 @@
   :dependencies [[org.clojure/clojure "1.9.0-alpha3"]
                  [org.clojure/test.check "0.9.0"]
                  [manifold "0.1.4"]]
+  :source-paths ["src"]
   :profiles {:dev
-             {:dependencies
+             {:source-paths ["src" "dev"]
+              :dependencies
               [[org.clojure/core.async "0.2.374"]]}})
