@@ -3,6 +3,7 @@
     [clojure.test.check.generators :as gen]
     [clojure.inspector :refer [atom?]]
     [clojure.spec :as spec]
+    [clojure.spec.test :refer [instrument]]
     [manifold
      [time :as t]
      [stream :as s]
@@ -103,7 +104,7 @@
           ::max-waiting (spec/nilable integer?))
   :ret ::dependency-map)
 
-(spec/instrument #'chained-put!)
+(instrument `chained-put!)
 
 (defn- dissoc-realized
   "Remove all the items where both read and write locks have been realized."
@@ -120,7 +121,7 @@
   :args (spec/cat ::dependency-map ::dependency-map)
   :ret ::dependency-map)
 
-(spec/instrument #'dissoc-realized)
+(instrument `dissoc-realized)
 
 (defn- start-cron-clean-up!
   [dm interval]
@@ -189,7 +190,7 @@
                                 ::options ::options))
   :ret ::system)
 
-(spec/instrument #'dependify)
+(instrument `dependify)
 
 (defn release!
   "This function takes in a depends data wrapper and attempts to release any
@@ -205,7 +206,7 @@
   :args (spec/cat ::data-wrapper ::data-wrapper)
   :ret true?)
 
-(spec/instrument #'release!)
+(instrument `release!)
 
 (defn consume
   "This function lets you consume data that could have data dependencies that
@@ -232,7 +233,7 @@
                   ::consumption-fn-args (spec/* ::anything))
   :ret d/deferred?)
 
-(spec/instrument #'consume)
+(instrument `consume)
 
 (defn apply-timeout!
   [item interval]
@@ -246,7 +247,7 @@
   :ret ::data-wrapper
   :fn #(identical? (:ret %) (-> % :args ::item)))
 
-(spec/instrument #'apply-timeout!)
+(instrument `apply-timeout!)
 
 (defn map-timeout
   "Applies a timeout to the completion lock. This function returns a stream
@@ -262,7 +263,7 @@
                   ::interval integer?)
   :ret s/stream?)
 
-(spec/instrument #'map-timeout)
+(instrument `map-timeout)
 
 (defn map-release
   "Releases the dependencies on each item and emits the data on to the stream
@@ -281,5 +282,5 @@
   :args (spec/cat ::source s/sourceable?)
   :ret s/stream?)
 
-(spec/instrument #'map-release)
+(instrument `map-release)
 

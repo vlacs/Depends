@@ -6,7 +6,7 @@ library utilizes Manifold for stream abstraction and for asyncronous workflows
 in order to maximize compatibility with any of the abstractions that implement
 Manifold sources and/or sinks.
 
-This library is utilizing Clojure 1.9 (alpha 3), clojure.spec and
+This library is utilizing Clojure 1.9 (alpha 10), clojure.spec and
 clojure.test.check.
 
 ## Usage
@@ -15,12 +15,8 @@ It's on Clojars!
 
 [![Clojars Project](https://img.shields.io/clojars/v/org.vlacs/depends.svg)](https://clojars.org/org.vlacs/depends)
 
-Please note that version ```0.0.1``` is broken. ```0.0.2-SNAPSHOT``` is the
-latest bleeding edge version of this library. If it's not obvious, this library
-is not stable or complete yet.
-
-It's fairly straight forward, there are only a handful (so far,) functions that
-you should be thinking about when using Depends:
+Depends is fairly straight forward, there are only a handful (so far,) of functions
+that you should be thinking about when using Depends:
 
 First, there is ```depends/dependify``` which creates a single instance of
 a dependency manager. Its argument are an input (anything sourceable by
